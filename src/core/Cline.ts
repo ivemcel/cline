@@ -104,33 +104,55 @@ export class Cline {
 	private didCompleteReadingStream = false
 
 	constructor(
-		provider: ClineProvider,
-		apiConfiguration: ApiConfiguration,
-		autoApprovalSettings: AutoApprovalSettings,
-		customInstructions?: string,
-		task?: string,
-		images?: string[],
-		historyItem?: HistoryItem,
-	) {
+		provider: ClineProvider, // ClineProvider 实例，提供核心的上下文和功能
+		apiConfiguration: ApiConfiguration, // API 配置，用于构建 API 处理程序
+		autoApprovalSettings: AutoApprovalSettings, // 自动审批设置，用于配置审批的自动化行为
+		customInstructions?: string, // 可选的自定义指令，用于在任务中执行特定的操作
+		task?: string, // 可选的任务名称或描述
+		images?: string[], // 可选的图像列表，用于与任务关联
+		historyItem?: HistoryItem, // 可选的历史任务项，用于恢复先前的任务状态
+	  ) {
+		// 通过 WeakRef 创建对 provider 的弱引用，避免内存泄漏
 		this.providerRef = new WeakRef(provider)
+		
+		// 使用 apiConfiguration 配置构建 API 处理程序
 		this.api = buildApiHandler(apiConfiguration)
+		
+		// 创建一个 TerminalManager 实例，管理终端会话
 		this.terminalManager = new TerminalManager()
+		
+		// 使用 provider 的上下文创建一个 UrlContentFetcher 实例，用于获取 URL 内容
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)
+		
+		// 创建一个 BrowserSession 实例，用于管理浏览器会话
 		this.browserSession = new BrowserSession(provider.context)
-		this.diffViewProvider = new DiffViewProvider(cwd)
+		
+		// 创建一个 DiffViewProvider 实例，用于管理差异视图的提供
+		this.diffViewProvider = new DiffViewProvider(cwd) // cwd 可能是当前工作目录
+		
+		// 设置可选的自定义指令
 		this.customInstructions = customInstructions
+		
+		// 设置自动审批设置
 		this.autoApprovalSettings = autoApprovalSettings
+		
+		// 如果传入了历史项，恢复任务的历史状态
 		if (historyItem) {
-			this.taskId = historyItem.id
-			this.conversationHistoryDeletedRange = historyItem.conversationHistoryDeletedRange
-			this.resumeTaskFromHistory()
-		} else if (task || images) {
-			this.taskId = Date.now().toString()
-			this.startTask(task, images)
-		} else {
-			throw new Error("Either historyItem or task/images must be provided")
+		  this.taskId = historyItem.id // 从历史项中获取任务 ID
+		  this.conversationHistoryDeletedRange = historyItem.conversationHistoryDeletedRange // 恢复会话历史删除范围
+		  this.resumeTaskFromHistory() // 恢复任务
+		} 
+		// 如果传入了任务或图像，创建一个新的任务
+		else if (task || images) {
+		  this.taskId = Date.now().toString() // 生成一个唯一的任务 ID（使用当前时间戳）
+		  this.startTask(task, images) // 启动新任务
+		} 
+		// 如果既没有历史项，也没有任务和图像，则抛出错误
+		else {
+		  throw new Error("Either historyItem or task/images must be provided")
 		}
-	}
+	  }
+	  
 
 	// Storing task to disk for history
 
@@ -722,28 +744,36 @@ export class Cline {
 	// Task lifecycle
 
 	private async startTask(task?: string, images?: string[]): Promise<void> {
-		// conversationHistory (for API) and clineMessages (for webview) need to be in sync
-		// if the extension process were killed, then on restart the clineMessages might not be empty, so we need to set it to [] when we create a new Cline client (otherwise webview would show stale messages from previous session)
-		this.clineMessages = []
-		this.apiConversationHistory = []
+		// 确保会话历史和 Webview 显示的消息保持同步
+		// 如果扩展进程被终止，重新启动时，Webview 中的 clineMessages 可能不为空，因此在创建新的 Cline 客户端时需要将其清空，否则 Webview 会显示来自上一会话的过时消息
+		this.clineMessages = [] // 清空当前的 Webview 消息
+		this.apiConversationHistory = [] // 清空 API 会话历史
+		
+		// 将当前状态更新到 Webview
 		await this.providerRef.deref()?.postStateToWebview()
-
+	  
+		// 调用 say 方法，发送任务文本和图像数据到 Webview
 		await this.say("text", task, images)
-
+	  
+		// 标记任务已初始化完成
 		this.isInitialized = true
-
+	  
+		// 格式化图像块
 		let imageBlocks: Anthropic.ImageBlockParam[] = formatResponse.imageBlocks(images)
+		
+		// 启动任务循环，将任务文本和图像传递给任务处理函数
 		await this.initiateTaskLoop(
-			[
-				{
-					type: "text",
-					text: `<task>\n${task}\n</task>`,
-				},
-				...imageBlocks,
-			],
-			true,
+		  [
+			{
+			  type: "text", // 任务文本类型
+			  text: `<task>\n${task}\n</task>`, // 包装任务文本
+			},
+			...imageBlocks, // 将图像块添加到任务数据中
+		  ],
+		  true, // 任务循环的标志（可能是控制任务执行流程的标志）
 		)
-	}
+	  }
+	  
 
 	private async resumeTaskFromHistory() {
 		// TODO: right now we let users init checkpoints for old tasks, assuming they're continuing them from the same workspace (which we never tied to tasks, so no way for us to know if it's opened in the right workspace)
@@ -987,35 +1017,49 @@ export class Cline {
 	}
 
 	private async initiateTaskLoop(userContent: UserContent, isNewTask: boolean): Promise<void> {
-		let nextUserContent = userContent
-		let includeFileDetails = true
+		let nextUserContent = userContent // 初始化下一个用户内容为传入的内容
+		let includeFileDetails = true // 第一次循环时需要包含文件详细信息
+	  
+		// 开始一个循环，直到设置了 abort 标志为 true
 		while (!this.abort) {
-			const didEndLoop = await this.recursivelyMakeClineRequests(nextUserContent, includeFileDetails, isNewTask)
-			includeFileDetails = false // we only need file details the first time
-
-			//  The way this agentic loop works is that cline will be given a task that he then calls tools to complete. unless there's an attempt_completion call, we keep responding back to him with his tool's responses until he either attempt_completion or does not use anymore tools. If he does not use anymore tools, we ask him to consider if he's completed the task and then call attempt_completion, otherwise proceed with completing the task.
-			// There is a MAX_REQUESTS_PER_TASK limit to prevent infinite requests, but Cline is prompted to finish the task as efficiently as he can.
-
-			//const totalCost = this.calculateApiCost(totalInputTokens, totalOutputTokens)
-			if (didEndLoop) {
-				// For now a task never 'completes'. This will only happen if the user hits max requests and denies resetting the count.
-				//this.say("task_completed", `Task completed. Total API usage cost: ${totalCost}`)
-				break
-			} else {
-				// this.say(
-				// 	"tool",
-				// 	"Cline responded with only text blocks but has not called attempt_completion yet. Forcing him to continue with task..."
-				// )
-				nextUserContent = [
-					{
-						type: "text",
-						text: formatResponse.noToolsUsed(),
-					},
-				]
-				this.consecutiveMistakeCount++
-			}
+		  // 调用递归请求函数，传入当前的用户内容、是否包含文件详情和是否是新任务
+		  const didEndLoop = await this.recursivelyMakeClineRequests(nextUserContent, includeFileDetails, isNewTask)
+		  
+		  // 之后的请求不再需要文件详细信息
+		  includeFileDetails = false
+	  
+		  // 这个循环是 Cline 代理模型的工作流程。Cline 会接收到一个任务，使用工具完成任务，直到他完成任务。
+		  // 如果 Cline 没有调用 attempt_completion（即任务未完成），我们继续通过工具的响应来给 Cline 提供反馈。
+		  // 直到他调用 attempt_completion 或者不再使用工具，如果他没有再使用工具，我们会请求他确认任务是否完成，然后调用 attempt_completion。
+		  
+		  // 为了防止无限请求，设置了 MAX_REQUESTS_PER_TASK 限制，提示 Cline 尽量高效地完成任务。
+		  // const totalCost = this.calculateApiCost(totalInputTokens, totalOutputTokens)
+		  
+		  // 如果循环结束，说明任务完成
+		  if (didEndLoop) {
+			// 目前没有明确的任务完成标志，任务会在达到最大请求次数时终止。
+			// 例如，当用户达到最大请求次数并拒绝重置计数时，任务才算完成。
+			// this.say("task_completed", `Task completed. Total API usage cost: ${totalCost}`)
+			break // 任务结束，退出循环
+		  } else {
+			// 如果 Cline 仅返回了文本块，但没有调用 attempt_completion，则强制继续任务。
+			// 这里将通过 `nextUserContent` 提供一个提示，强制 Cline 继续任务
+			// this.say(
+			//   "tool",
+			//   "Cline responded with only text blocks but has not called attempt_completion yet. Forcing him to continue with task..."
+			// )
+			nextUserContent = [
+			  {
+				type: "text", // 提供文本内容类型
+				text: formatResponse.noToolsUsed(), // 如果 Cline 没有使用工具，返回“没有工具使用”的提示
+			  },
+			]
+			// 增加连续错误计数，表示 Cline 在当前任务中的表现可能不如预期
+			this.consecutiveMistakeCount++
+		  }
 		}
 	}
+	  
 
 	async abortTask() {
 		this.abort = true // will stop any autonomously running promises
@@ -3035,88 +3079,71 @@ export class Cline {
 	}
 
 	async getEnvironmentDetails(includeFileDetails: boolean = false) {
-		let details = ""
-
-		// It could be useful for cline to know if the user went from one or no file to another between messages, so we always include this context
+		let details = "" // 初始化返回的环境详情字符串
+	
+		// 收集当前 VSCode 可见的文件信息
 		details += "\n\n# VSCode Visible Files"
 		const visibleFiles = vscode.window.visibleTextEditors
-			?.map((editor) => editor.document?.uri?.fsPath)
-			.filter(Boolean)
-			.map((absolutePath) => path.relative(cwd, absolutePath).toPosix())
+			?.map((editor) => editor.document?.uri?.fsPath) // 获取每个编辑器窗口的文件路径
+			.filter(Boolean) // 过滤掉空值
+			.map((absolutePath) => path.relative(cwd, absolutePath).toPosix()) // 转换为相对路径并格式化
 			.join("\n")
+		
 		if (visibleFiles) {
 			details += `\n${visibleFiles}`
 		} else {
-			details += "\n(No visible files)"
+			details += "\n(No visible files)" // 如果没有可见文件
 		}
-
+	
+		// 收集当前 VSCode 打开的标签页文件路径
 		details += "\n\n# VSCode Open Tabs"
 		const openTabs = vscode.window.tabGroups.all
-			.flatMap((group) => group.tabs)
-			.map((tab) => (tab.input as vscode.TabInputText)?.uri?.fsPath)
-			.filter(Boolean)
-			.map((absolutePath) => path.relative(cwd, absolutePath).toPosix())
+			.flatMap((group) => group.tabs) // 获取所有标签页
+			.map((tab) => (tab.input as vscode.TabInputText)?.uri?.fsPath) // 获取每个标签的文件路径
+			.filter(Boolean) // 过滤掉空值
+			.map((absolutePath) => path.relative(cwd, absolutePath).toPosix()) // 转换为相对路径并格式化
 			.join("\n")
+		
 		if (openTabs) {
 			details += `\n${openTabs}`
 		} else {
-			details += "\n(No open tabs)"
+			details += "\n(No open tabs)" // 如果没有打开的标签页
 		}
-
-		const busyTerminals = this.terminalManager.getTerminals(true)
-		const inactiveTerminals = this.terminalManager.getTerminals(false)
-		// const allTerminals = [...busyTerminals, ...inactiveTerminals]
-
+	
+		// 获取当前活动的终端和非活动终端
+		const busyTerminals = this.terminalManager.getTerminals(true) // 获取正在忙碌的终端
+		const inactiveTerminals = this.terminalManager.getTerminals(false) // 获取非活动的终端
+	
+		// 如果有忙碌的终端并且文件已被编辑，等待 300ms 以便终端输出能更新
 		if (busyTerminals.length > 0 && this.didEditFile) {
-			//  || this.didEditFile
-			await delay(300) // delay after saving file to let terminals catch up
+			await delay(300) // 延迟一段时间，等待终端的输出更新
 		}
-
-		// let terminalWasBusy = false
+	
+		// 等待忙碌终端的进程冷却下来（例如编译、服务器启动等），以获取最准确的输出
 		if (busyTerminals.length > 0) {
-			// wait for terminals to cool down
-			// terminalWasBusy = allTerminals.some((t) => this.terminalManager.isProcessHot(t.id))
 			await pWaitFor(() => busyTerminals.every((t) => !this.terminalManager.isProcessHot(t.id)), {
-				interval: 100,
-				timeout: 15_000,
-			}).catch(() => {})
+				interval: 100, // 每 100ms 检查一次
+				timeout: 15_000, // 最多等待 15 秒
+			}).catch(() => {}) // 捕获超时错误，避免程序崩溃
 		}
-
-		// we want to get diagnostics AFTER terminal cools down for a few reasons: terminal could be scaffolding a project, dev servers (compilers like webpack) will first re-compile and then send diagnostics, etc
-		/*
-		let diagnosticsDetails = ""
-		const diagnostics = await this.diagnosticsMonitor.getCurrentDiagnostics(this.didEditFile || terminalWasBusy) // if cline ran a command (ie npm install) or edited the workspace then wait a bit for updated diagnostics
-		for (const [uri, fileDiagnostics] of diagnostics) {
-			const problems = fileDiagnostics.filter((d) => d.severity === vscode.DiagnosticSeverity.Error)
-			if (problems.length > 0) {
-				diagnosticsDetails += `\n## ${path.relative(cwd, uri.fsPath)}`
-				for (const diagnostic of problems) {
-					// let severity = diagnostic.severity === vscode.DiagnosticSeverity.Error ? "Error" : "Warning"
-					const line = diagnostic.range.start.line + 1 // VSCode lines are 0-indexed
-					const source = diagnostic.source ? `[${diagnostic.source}] ` : ""
-					diagnosticsDetails += `\n- ${source}Line ${line}: ${diagnostic.message}`
-				}
-			}
-		}
-		*/
-		this.didEditFile = false // reset, this lets us know when to wait for saved files to update terminals
-
-		// waiting for updated diagnostics lets terminal output be the most up-to-date possible
+	
+		// 更新标志，表示文件已经编辑过，需要清除该标志
+		this.didEditFile = false
+	
+		// 收集正在运行的终端输出
 		let terminalDetails = ""
 		if (busyTerminals.length > 0) {
-			// terminals are cool, let's retrieve their output
 			terminalDetails += "\n\n# Actively Running Terminals"
 			for (const busyTerminal of busyTerminals) {
 				terminalDetails += `\n## Original command: \`${busyTerminal.lastCommand}\``
-				const newOutput = this.terminalManager.getUnretrievedOutput(busyTerminal.id)
+				const newOutput = this.terminalManager.getUnretrievedOutput(busyTerminal.id) // 获取终端的新输出
 				if (newOutput) {
 					terminalDetails += `\n### New Output\n${newOutput}`
-				} else {
-					// details += `\n(Still running, no new output)` // don't want to show this right after running the command
 				}
 			}
 		}
-		// only show inactive terminals if there's output to show
+	
+		// 收集非活动终端的输出，仅当有新输出时才展示
 		if (inactiveTerminals.length > 0) {
 			const inactiveTerminalOutputs = new Map<number, string>()
 			for (const inactiveTerminal of inactiveTerminals) {
@@ -3136,31 +3163,27 @@ export class Cline {
 				}
 			}
 		}
-
-		// details += "\n\n# VSCode Workspace Errors"
-		// if (diagnosticsDetails) {
-		// 	details += diagnosticsDetails
-		// } else {
-		// 	details += "\n(No errors detected)"
-		// }
-
+	
+		// 如果有终端信息，则将其加入到最终的详细信息中
 		if (terminalDetails) {
 			details += terminalDetails
 		}
-
+	
+		// 如果需要文件详细信息，收集当前工作目录下的文件列表
 		if (includeFileDetails) {
 			details += `\n\n# Current Working Directory (${cwd.toPosix()}) Files\n`
 			const isDesktop = arePathsEqual(cwd, path.join(os.homedir(), "Desktop"))
 			if (isDesktop) {
-				// don't want to immediately access desktop since it would show permission popup
-				details += "(Desktop files not shown automatically. Use list_files to explore if needed.)"
+				details += "(Desktop files not shown automatically. Use list_files to explore if needed.)" // 如果当前工作目录是桌面，提示用户需要手动查看文件
 			} else {
-				const [files, didHitLimit] = await listFiles(cwd, true, 200)
-				const result = formatResponse.formatFilesList(cwd, files, didHitLimit)
+				const [files, didHitLimit] = await listFiles(cwd, true, 200) // 获取当前目录下的文件列表，最多 200 个
+				const result = formatResponse.formatFilesList(cwd, files, didHitLimit) // 格式化文件列表
 				details += result
 			}
 		}
-
+	
+		// 最终返回包含环境信息的字符串，内容包含所有的文件、终端输出等详细信息
 		return `<environment_details>\n${details.trim()}\n</environment_details>`
 	}
+	
 }
