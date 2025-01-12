@@ -1,10 +1,11 @@
 /**
- * Attempts a line-trimmed fallback match for the given search content in the original content.
- * It tries to match `searchContent` lines against a block of lines in `originalContent` starting
- * from `lastProcessedIndex`. Lines are matched by trimming leading/trailing whitespace and ensuring
- * they are identical afterwards.
- *
- * Returns [matchIndexStart, matchIndexEnd] if found, or false if not found.
+ * 尝试在原始内容中进行行级别的匹配。
+ * 通过去除每行首尾的空白字符来进行匹配，确保内容相同。
+ * 
+ * @param originalContent - 原始文件内容
+ * @param searchContent - 需要查找的内容
+ * @param startIndex - 开始查找的位置
+ * @returns 如果找到匹配，返回 [起始位置, 结束位置]，否则返回 false
  */
 function lineTrimmedFallbackMatch(originalContent: string, searchContent: string, startIndex: number): [number, number] | false {
 	// Split both contents into lines
@@ -61,31 +62,24 @@ function lineTrimmedFallbackMatch(originalContent: string, searchContent: string
 }
 
 /**
- * Attempts to match blocks of code by using the first and last lines as anchors.
- * This is a third-tier fallback strategy that helps match blocks where we can identify
- * the correct location by matching the beginning and end, even if the exact content
- * differs slightly.
- *
- * The matching strategy:
- * 1. Only attempts to match blocks of 3 or more lines to avoid false positives
- * 2. Extracts from the search content:
- *    - First line as the "start anchor"
- *    - Last line as the "end anchor"
- * 3. For each position in the original content:
- *    - Checks if the next line matches the start anchor
- *    - If it does, jumps ahead by the search block size
- *    - Checks if that line matches the end anchor
- *    - All comparisons are done after trimming whitespace
- *
- * This approach is particularly useful for matching blocks of code where:
- * - The exact content might have minor differences
- * - The beginning and end of the block are distinctive enough to serve as anchors
- * - The overall structure (number of lines) remains the same
- *
- * @param originalContent - The full content of the original file
- * @param searchContent - The content we're trying to find in the original file
- * @param startIndex - The character index in originalContent where to start searching
- * @returns A tuple of [startIndex, endIndex] if a match is found, false otherwise
+ * 使用代码块的首尾行作为锚点进行匹配。
+ * 这是第三级备选匹配策略，用于处理内容略有差异但整体结构相同的代码块。
+ * 
+ * 匹配策略：
+ * 1. 只匹配3行或以上的代码块，避免误匹配
+ * 2. 从搜索内容中提取：
+ *    - 第一行作为"起始锚点"
+ *    - 最后一行作为"结束锚点"
+ * 3. 在原始内容中逐行检查：
+ *    - 检查下一行是否匹配起始锚点
+ *    - 如果匹配，跳过搜索块的大小
+ *    - 检查该位置是否匹配结束锚点
+ *    - 所有比较都会去除空白字符
+ * 
+ * 此方法特别适用于匹配以下情况的代码块：
+ * - 内容可能有细微差异
+ * - 代码块的开始和结束足够独特，可以作为锚点
+ * - 整体行数保持不变
  */
 function blockAnchorFallbackMatch(originalContent: string, searchContent: string, startIndex: number): [number, number] | false {
 	const originalLines = originalContent.split("\n")
@@ -143,62 +137,46 @@ function blockAnchorFallbackMatch(originalContent: string, searchContent: string
 }
 
 /**
- * This function reconstructs the file content by applying a streamed diff (in a
- * specialized SEARCH/REPLACE block format) to the original file content. It is designed
- * to handle both incremental updates and the final resulting file after all chunks have
- * been processed.
- *
- * The diff format is a custom structure that uses three markers to define changes:
- *
+ * 通过应用流式差异（使用特殊的 SEARCH/REPLACE 块格式）重构文件内容。
+ * 支持增量更新和最终文件内容的处理。
+ * 
+ * 差异格式使用三个标记定义变更：
  *   <<<<<<< SEARCH
- *   [Exact content to find in the original file]
+ *   [需要在原始文件中查找的内容]
  *   =======
- *   [Content to replace with]
+ *   [替换的新内容]
  *   >>>>>>> REPLACE
- *
- * Behavior and Assumptions:
- * 1. The file is processed chunk-by-chunk. Each chunk of `diffContent` may contain
- *    partial or complete SEARCH/REPLACE blocks. By calling this function with each
- *    incremental chunk (with `isFinal` indicating the last chunk), the final reconstructed
- *    file content is produced.
- *
- * 2. Matching Strategy (in order of attempt):
- *    a. Exact Match: First attempts to find the exact SEARCH block text in the original file
- *    b. Line-Trimmed Match: Falls back to line-by-line comparison ignoring leading/trailing whitespace
- *    c. Block Anchor Match: For blocks of 3+ lines, tries to match using first/last lines as anchors
- *    If all matching strategies fail, an error is thrown.
- *
- * 3. Empty SEARCH Section:
- *    - If SEARCH is empty and the original file is empty, this indicates creating a new file
- *      (pure insertion).
- *    - If SEARCH is empty and the original file is not empty, this indicates a complete
- *      file replacement (the entire original content is considered matched and replaced).
- *
- * 4. Applying Changes:
- *    - Before encountering the "=======" marker, lines are accumulated as search content.
- *    - After "=======" and before ">>>>>>> REPLACE", lines are accumulated as replacement content.
- *    - Once the block is complete (">>>>>>> REPLACE"), the matched section in the original
- *      file is replaced with the accumulated replacement lines, and the position in the original
- *      file is advanced.
- *
- * 5. Incremental Output:
- *    - As soon as the match location is found and we are in the REPLACE section, each new
- *      replacement line is appended to the result so that partial updates can be viewed
- *      incrementally.
- *
- * 6. Partial Markers:
- *    - If the final line of the chunk looks like it might be part of a marker but is not one
- *      of the known markers, it is removed. This prevents incomplete or partial markers
- *      from corrupting the output.
- *
- * 7. Finalization:
- *    - Once all chunks have been processed (when `isFinal` is true), any remaining original
- *      content after the last replaced section is appended to the result.
- *    - Trailing newlines are not forcibly added. The code tries to output exactly what is specified.
- *
- * Errors:
- * - If the search block cannot be matched using any of the available matching strategies,
- *   an error is thrown.
+ * 
+ * 工作流程和假设：
+ * 1. 文件按块处理：
+ *    - 每个 diffContent 块可能包含完整或部分的 SEARCH/REPLACE 块
+ *    - 通过 isFinal 参数标识最后一个块
+ * 
+ * 2. 匹配策略（按尝试顺序）：
+ *    a. 精确匹配：首先尝试在原始文件中精确匹配 SEARCH 块文本
+ *    b. 行级匹配：如果精确匹配失败，忽略空白字符进行行级比较
+ *    c. 块锚点匹配：对于3行以上的块，使用首尾行作为锚点匹配
+ * 
+ * 3. 空 SEARCH 块处理：
+ *    - 原始文件为空：表示创建新文件
+ *    - 原始文件不为空：表示完全替换文件内容
+ * 
+ * 4. 变更应用：
+ *    - "=======" 之前的内容作为搜索内容
+ *    - "=======" 到 ">>>>>>> REPLACE" 之间的内容作为替换内容
+ *    - 完整块处理后，用替换内容更新原始文件中的匹配部分
+ * 
+ * 5. 增量输出：
+ *    - 确定匹配位置后，新的替换行立即添加到结果中
+ * 
+ * 6. 部分标记处理：
+ *    - 如果块的最后一行可能是不完整的标记，将其移除
+ * 
+ * 7. 最终处理：
+ *    - 所有块处理完成后，添加剩余的原始内容
+ *    - 保持原始的换行符，不强制添加
+ * 
+ * @throws {Error} 当无法使用任何策略匹配搜索块时抛出错误
  */
 export async function constructNewFileContent(diffContent: string, originalContent: string, isFinal: boolean): Promise<string> {
 	let result = ""
