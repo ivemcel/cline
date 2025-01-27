@@ -1,0 +1,223 @@
+/*
+package.json和package-lock.json的区别
+package.json是npm init 时生成的。
+主要作用是描述项目以及项目所依赖的模块信息。
+
+package-lock.json是在运行npm install时生成的一份文件。用以记录当前状态下实际安装的各个npm 包的具体来源和版本号。
+主要作用是用来描述node_modules文件中所有模块的版本信息、模块来源以及依赖的小版本信息。
+当版本升级，使用npm install命令时，会安装package.json中指定的大版本的最新版本。
+
+为什么有了package.json，还需要package-lock.json文件呢，当node_modules文件夹并不存在或被删除时，
+需要用到npm install重新装载全部依赖时，通过package-lock.json可以直接表明下载地址和相关依赖，相对下载速度也更快，也不容易报错。
+*/
+
+{
+  // 项目的名称
+  "name": "claude-dev",
+
+  // 项目的显示名称，通常用于 VS Code 等环境中的插件显示
+  "displayName": "Claude Dev",
+
+  // 项目的描述，简要说明该项目的功能
+  "description": "Autonomous software engineer right in your IDE, capable of reading/writing files, executing commands, and more with your permission every step of the way.",
+
+  // 项目的版本
+  "version": "1.0.71",
+
+  // 项目的图标，用于在 VS Code 等环境中显示
+  "icon": "icon.png",
+
+  // 指定项目支持的 VS Code 版本范围
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+
+  // 项目的作者信息
+  "author": {
+    "name": "Saoud Rizwan"
+  },
+
+  // 项目使用的许可证，MIT 是一种开放源代码许可协议
+  "license": "MIT",
+
+  // 项目的发布者
+  "publisher": "saoudrizwan",
+
+  // 项目的 Git 仓库信息
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saoudrizwan/claude-dev"
+  },
+
+  // 项目所属的分类，可以帮助在扩展商店中分类
+  "categories": [
+    "AI"
+  ],
+
+  // 项目的关键词，方便其他人通过这些关键词搜索到该项目
+  "keywords": [
+    "AI",
+    "Claude",
+    "agentic",
+    "productivity",
+    "automation"
+  ],
+
+  // 激活扩展的事件，空数组意味着没有预设的激活事件
+  "activationEvents": [],
+
+  // 扩展的入口文件
+  "main": "./dist/extension.js",
+
+  // 描述扩展如何贡献给 VS Code 的功能，包括视图、命令、菜单等
+  "contributes": {
+    // 定义扩展在活动栏中的视图容器
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-dev-ActivityBar",  // 容器的 ID
+          "title": "Claude Dev",  // 容器的标题
+          "icon": "$(robot)"  // 容器图标，使用 VS Code 提供的图标符号
+        }
+      ]
+    },
+
+    // 定义扩展提供的视图，这里将视图添加到活动栏容器中
+    "views": {
+      "claude-dev-ActivityBar": [
+        {
+          "type": "webview",  // 视图类型为 webview
+          "id": "claude-dev.SidebarProvider",  // 视图 ID
+          "name": ""  // 视图的名称（为空表示没有特定名称）
+        }
+      ]
+    },
+
+    // 定义扩展提供的命令
+    "commands": [
+      {
+        "command": "claude-dev.plusButtonTapped",  // 命令 ID
+        "title": "New Task",  // 命令的标题
+        "icon": "$(add)"  // 命令的图标
+      },
+      {
+        "command": "claude-dev.popoutButtonTapped",
+        "title": "Open in Editor",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "claude-dev.settingsButtonTapped",
+        "title": "Settings",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "claude-dev.openInNewTab",
+        "title": "Open In New Tab",
+        "category": "Claude Dev"  // 命令所属的分类
+      }
+    ],
+
+    // 定义菜单项
+    "menus": {
+      "view/title": [
+        {
+          "command": "claude-dev.plusButtonTapped",  // 绑定的命令
+          "group": "navigation",  // 菜单项的分组
+          "when": "view == claude-dev.SidebarProvider"  // 视图显示时才会显示菜单项
+        },
+        {
+          "command": "claude-dev.popoutButtonTapped",
+          "group": "navigation",
+          "when": "view == claude-dev.SidebarProvider"
+        },
+        {
+          "command": "claude-dev.settingsButtonTapped",
+          "group": "navigation",
+          "when": "view == claude-dev.SidebarProvider"
+        }
+      ]
+    }
+  },
+
+  // 定义项目的构建和开发脚本
+  "scripts": {
+    // 在发布前执行的脚本，首先执行 `npm run package`
+    "vscode:prepublish": "npm run package",
+
+    // 编译脚本，先进行类型检查，再进行代码格式检查，然后编译代码
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+
+    // 启动开发模式，运行 `watch` 开头的脚本并行监听文件变化
+    "watch": "npm-run-all -p watch:*",
+
+    // 启动 esbuild 监听模式，监听文件变化并重新构建
+    "watch:esbuild": "node esbuild.js --watch",
+
+    // 启动 TypeScript 编译器的监听模式，只进行类型检查
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+
+    // 打包脚本，构建 Webview、检查类型、进行代码检查，然后生产环境构建
+    "package": "npm run build:webview && npm run check-types && npm run lint && node esbuild.js --production",
+
+    // 编译测试文件
+    "compile-tests": "tsc -p . --outDir out",
+
+    // 启动测试文件的监听模式
+    "watch-tests": "tsc -p . -w --outDir out",
+
+    // 测试前的准备工作，先进行编译、类型检查和代码检查
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+
+    // 进行类型检查
+    "check-types": "tsc --noEmit",
+
+    // 运行代码格式检查（eslint）
+    "lint": "eslint src --ext ts",
+
+    // 运行 VS Code 测试
+    "test": "vscode-test",
+
+    // 安装所有依赖，包括 webview-ui 子模块的依赖
+    "install:all": "npm install && cd webview-ui && npm install",
+
+    // 启动 Webview UI
+    "start:webview": "cd webview-ui && npm run start",
+
+    // 构建 Webview UI
+    "build:webview": "cd webview-ui && npm run build",
+
+    // 测试 Webview UI
+    "test:webview": "cd webview-ui && npm run test"
+  },
+
+  // 项目开发依赖
+  "devDependencies": {
+    "@types/diff": "^5.2.1",  // diff 的类型定义
+    "@types/mocha": "^10.0.7",  // Mocha 测试框架的类型定义
+    "@types/node": "20.x",  // Node.js 的类型定义
+    "@types/vscode": "^1.82.0",  // VS Code API 的类型定义
+    "@typescript-eslint/eslint-plugin": "^7.14.1",  // TypeScript eslint 插件
+    "@typescript-eslint/parser": "^7.11.0",  // TypeScript eslint 解析器
+    "@vscode/test-cli": "^0.0.9",  // VS Code 测试 CLI 工具
+    "@vscode/test-electron": "^2.4.0",  // VS Code 测试 Electron 工具
+    "esbuild": "^0.21.5",  // JavaScript 构建工具 esbuild
+    "eslint": "^8.57.0",  // 代码风格检查工具 ESLint
+    "npm-run-all": "^4.1.5",  // 允许并行执行多个 npm 脚本
+    "typescript": "^5.4.5"  // TypeScript 编译器
+  },
+
+  // 项目生产依赖
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3",  // Anthropic AI SDK
+    "@vscode/codicons": "^0.0.36",  // VS Code 图标库
+    "default-shell": "^2.2.0",  // 用于获取默认 shell 的包
+    "diff": "^5.2.0",  // 用于计算文本差异的库
+    "execa": "^9.3.0",  // 用于执行命令的工具
+    "globby": "^14.0.2",  // 用于匹配文件的库
+    "os-name": "^6.0.0",  // 获取操作系统名称的工具
+    "p-wait-for": "^5.0.2",  // 用于等待异步事件的库
+    "serialize-error": "^11.0.3",  // 错误序列化工具
+    "tree-sitter-wasms": "^0.1.11",  // Tree Sitter WASM 版本
+    "web-tree-sitter": "^0.22.6"  // Web 环境中的 Tree Sitter 库
+  }
+}
