@@ -1,24 +1,66 @@
 {
+	//tsconfig.json 文件用于配置 TypeScript 编译器的行为，控制项目的编译方式、输出结果、类型检查规则等。
+	// 通过合理配置 compilerOptions，可以确保 TypeScript 编译的准确性和代码的质量，同时提高开发效率。
+	
 	"compilerOptions": {
+		// 启用 ECMAScript 模块互操作性。这使得可以通过 `import` 来使用 CommonJS 的模块
 		"esModuleInterop": true,
+		
+		// 启用实验性装饰器（Decorator）。装饰器在 TypeScript 中用于类声明和方法声明的元编程
 		"experimentalDecorators": true,
+
+		// 强制文件名的大小写一致性。即使操作系统不区分大小写（如 Windows），也会强制文件名一致
 		"forceConsistentCasingInFileNames": true,
+
+		// 启用独立模块模式（isolated modules）。这要求每个文件都是独立模块，不能依赖其他文件的外部代码
 		"isolatedModules": true,
+
+		// 设置库文件（lib）包含的环境。此处包含了 es2022、esnext.disposable 和 DOM 库
 		"lib": ["es2022", "esnext.disposable", "DOM"],
+
+		// 设置模块系统为 "esnext"。这意味着使用 ES2022 的模块标准来编译代码
 		"module": "esnext",
+
+		// 设置模块解析策略为 Bundler。这个配置适用于使用模块打包工具（如 Webpack 或 Rollup）时
 		"moduleResolution": "Bundler",
+
+		// 启用强制性检查 switch 语句的 case 语句。防止 switch 语句在没有 break 语句的情况下发生意外的 fallthrough
 		"noFallthroughCasesInSwitch": true,
+
+		// 启用对重写方法的隐式覆盖的检查。如果在子类中覆盖父类的方法，TypeScript 会要求明确标明 `override`
 		"noImplicitOverride": true,
+
+		// 启用返回值必须明确。如果一个函数没有返回值且没有 `void` 类型，会抛出错误
 		"noImplicitReturns": true,
+
+		// 启用未使用本地变量的错误。如果有声明了但没有使用的局部变量，TypeScript 会抛出错误
 		"noUnusedLocals": false,
+
+		// 启用对 JSON 模块的解析。这允许 TypeScript 直接导入 `.json` 文件
 		"resolveJsonModule": true,
+
+		// 设置项目的根目录为 `src`。TypeScript 会从该目录开始编译文件
 		"rootDir": "src",
+
+		// 跳过库文件的类型检查。通常用于加速编译过程，但可能会遗漏某些库中的类型错误
 		"skipLibCheck": true,
+
+		// 启用生成源映射文件（`.map` 文件）。这使得编译后的 JavaScript 文件可以关联到原始的 TypeScript 源代码
 		"sourceMap": true,
+
+		// 启用严格模式。严格模式开启时，TypeScript 会检查更多类型安全相关的问题
 		"strict": true,
+
+		// 设置目标 JavaScript 版本为 `es2022`。TypeScript 会根据此选项编译成对应版本的 JavaScript
 		"target": "es2022",
+
+		// 使用 `useDefineForClassFields` 设置，强制类字段使用 `define` 属性定义，这符合 ECMAScript 提案的行为
 		"useDefineForClassFields": true,
+
+		// 禁用在 catch 语句中使用 `unknown` 类型的变量。如果启用 `unknown` 类型，捕获的异常就需要先进行类型检查才能使用
 		"useUnknownInCatchVariables": false
 	},
+	
+	// 排除的文件和文件夹。TypeScript 会忽略这些路径中的文件，不会进行编译
 	"exclude": ["node_modules", ".vscode-test", "webview-ui"]
 }
