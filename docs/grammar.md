@@ -1,5 +1,12 @@
 ### 联合类型 |
 
+### 空值合并运算符 (??)
+空值合并运算符 ?? 用来在其左侧的值 为 null 或 undefined 时，返回其右侧的值。
+如果左侧的值是 null 或 undefined，则会使用右侧的默认值，否则返回左侧的值。
+示例：
+let x = null ?? "default";   // "default"
+let y = undefined ?? "default"; // "default"
+let z = 42 ?? "default";     // 42
 
 ### 可选字段?
 ```
