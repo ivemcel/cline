@@ -2795,28 +2795,34 @@ export class Cline {
 		}
 	}
 
+	// 异步方法：递归地发起 Cline 请求，处理自动批准、错误计数、API 请求等
 	async recursivelyMakeClineRequests(
-		userContent: UserContent,
-		includeFileDetails: boolean = false,
-		isNewTask: boolean = false,
+		userContent: UserContent,// 用户输入内容
+		includeFileDetails: boolean = false, // 是否包括文件详情
+		isNewTask: boolean = false, // 是否为新任务
 	): Promise<boolean> {
+		 // 如果实例被标记为中止，抛出错误
 		if (this.abort) {
 			throw new Error("Cline instance aborted")
 		}
 
+  		// 如果连续错误次数 >= 3，处理错误并给用户通知
 		if (this.consecutiveMistakeCount >= 3) {
+			// 如果启用了自动批准并且允许通知，显示系统通知
 			if (this.autoApprovalSettings.enabled && this.autoApprovalSettings.enableNotifications) {
 				showSystemNotification({
 					subtitle: "Error",
 					message: "Cline is having trouble. Would you like to continue the task?",
 				})
 			}
+			// 向 API 请求，传递错误信息
 			const { response, text, images } = await this.ask(
 				"mistake_limit_reached",
 				this.api.getModel().id.includes("claude")
 					? `This may indicate a failure in his thought process or inability to use a tool properly, which can be mitigated with some user guidance (e.g. "Try breaking down the task into smaller steps").`
 					: "Cline uses complex prompts and iterative task execution that may be challenging for less capable models. For best results, it's recommended to use Claude 3.5 Sonnet for its advanced agentic coding capabilities.",
 			)
+			// 如果返回的响应是 messageResponse，表示需要展示错误消息
 			if (response === "messageResponse") {
 				userContent.push(
 					...[
@@ -2828,30 +2834,37 @@ export class Cline {
 					],
 				)
 			}
+			// 重置连续错误计数
 			this.consecutiveMistakeCount = 0
 		}
 
+		// 如果自动批准设置已启用并且已经达到了最大请求次数
 		if (
 			this.autoApprovalSettings.enabled &&
 			this.consecutiveAutoApprovedRequestsCount >= this.autoApprovalSettings.maxRequests
 		) {
+			// 如果启用了通知，显示最大请求次数达到的通知
 			if (this.autoApprovalSettings.enableNotifications) {
 				showSystemNotification({
 					subtitle: "Max Requests Reached",
 					message: `Cline has auto-approved ${this.autoApprovalSettings.maxRequests.toString()} API requests.`,
 				})
 			}
+			// 向用户询问是否重置自动批准请求计数
 			await this.ask(
 				"auto_approval_max_req_reached",
 				`Cline has auto-approved ${this.autoApprovalSettings.maxRequests.toString()} API requests. Would you like to reset the count and proceed with the task?`,
 			)
+			// 重置自动批准请求计数
 			// if we get past the promise it means the user approved and did not start a new task
 			this.consecutiveAutoApprovedRequestsCount = 0
 		}
 
+  		// 获取上一个 API 请求的索引，以检查令牌使用情况
 		// get previous api req's index to check token usage and determine if we need to truncate conversation history
 		const previousApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
 
+		// 启动 API 请求之前，发送一个"请求开始"的占位消息，显示加载中的状态
 		// getting verbose details is an expensive operation, it uses globby to top-down build file structure of project which for large projects can take a few seconds
 		// for the best UX we show a placeholder api_req_started message with a loading spinner as this happens
 		await this.say(
@@ -2861,45 +2874,58 @@ export class Cline {
 			}),
 		)
 
+		// 初始化检查点追踪器（可能会消耗一定的资源）
 		// use this opportunity to initialize the checkpoint tracker (can be expensive to initialize in the constructor)
 		// FIXME: right now we're letting users init checkpoints for old tasks, but this could be a problem if opening a task in the wrong workspace
 		// isNewTask &&
 		if (!this.checkpointTracker) {
 			try {
+				// 尝试创建检查点追踪器
 				this.checkpointTracker = await CheckpointTracker.create(this.taskId, this.providerRef.deref())
 				this.checkpointTrackerErrorMessage = undefined
 			} catch (error) {
+				// 如果创建检查点失败，捕获错误并记录
 				const errorMessage = error instanceof Error ? error.message : "Unknown error"
 				console.error("Failed to initialize checkpoint tracker:", errorMessage)
+				// 保存错误信息，稍后会显示
 				this.checkpointTrackerErrorMessage = errorMessage // will be displayed right away since we saveClineMessages next which posts state to webview
 			}
 		}
 
+  		// 加载用户内容的上下文，包括是否包含文件详情
 		const [parsedUserContent, environmentDetails] = await this.loadContext(userContent, includeFileDetails)
 		userContent = parsedUserContent
+
+		// 添加环境信息为一个独立的文本块，区分开工具结果
 		// add environment details as its own text block, separate from tool results
 		userContent.push({ type: "text", text: environmentDetails })
 
+  		// 将用户内容添加到 API 会话历史记录中
 		await this.addToApiConversationHistory({
 			role: "user",
 			content: userContent,
 		})
 
+  		// 更新 API 请求开始的消息文本（由于占位消息是提前发送的，现在需要替换为实际的请求内容）
 		// since we sent off a placeholder api_req_started message to update the webview while waiting to actually start the API request (to load potential details for example), we need to update the text of that message
 		const lastApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
 		this.clineMessages[lastApiReqIndex].text = JSON.stringify({
 			request: userContent.map((block) => formatContentBlockToMarkdown(block)).join("\n\n"),
 		} satisfies ClineApiReqInfo)
+		// 保存会话消息
 		await this.saveClineMessages()
+		// 将状态发布到 Webview
 		await this.providerRef.deref()?.postStateToWebview()
 
 		try {
+			// 初始化令牌统计和成本相关变量
 			let cacheWriteTokens = 0
 			let cacheReadTokens = 0
 			let inputTokens = 0
 			let outputTokens = 0
 			let totalCost: number | undefined
 
+			// 更新 API 请求消息，记录令牌消耗、缓存写入/读取、成本等信息
 			// update api_req_started. we can't use api_req_finished anymore since it's a unique case where it could come after a streaming message (ie in the middle of being updated or executed)
 			// fortunately api_req_finished was always parsed out for the gui anyways, so it remains solely for legacy purposes to keep track of prices in tasks from history
 			// (it's worth removing a few months from now)
@@ -2918,11 +2944,12 @@ export class Cline {
 				} satisfies ClineApiReqInfo)
 			}
 
+    		// 异常处理：如果流式请求被中止，进行相关清理
 			const abortStream = async (cancelReason: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
 				if (this.diffViewProvider.isEditing) {
 					await this.diffViewProvider.revertChanges() // closes diff view
 				}
-
+     			 // 如果最后的消息是部分消息，需要更新并保存
 				// if last message is a partial we need to update and save it
 				const lastMessage = this.clineMessages.at(-1)
 				if (lastMessage && lastMessage.partial) {
@@ -2933,6 +2960,7 @@ export class Cline {
 					// await this.saveClineMessages()
 				}
 
+				// 向助手发送消息，告知它响应被中断
 				// Let assistant know their response was interrupted for when task is resumed
 				await this.addToApiConversationHistory({
 					role: "assistant",
@@ -2950,14 +2978,17 @@ export class Cline {
 					],
 				})
 
+      			// 更新 API 请求消息，记录取消原因和流失败消息
 				// update api_req_started to have cancelled and cost, so that we can display the cost of the partial stream
 				updateApiReqMsg(cancelReason, streamingFailedMessage)
 				await this.saveClineMessages()
 
+				// 标记流中止处理已完成
 				// signals to provider that it can retrieve the saved messages from disk, as abortTask can not be awaited on in nature
 				this.didFinishAbortingStream = true
 			}
 
+			// 重置流式请求状态
 			// reset streaming state
 			this.currentStreamingContentIndex = 0
 			this.assistantMessageContent = []
@@ -2971,12 +3002,15 @@ export class Cline {
 			this.didAutomaticallyRetryFailedApiRequest = false
 			await this.diffViewProvider.reset()
 
+			// 尝试发起 API 请求。只有第一次成功，才会继续，否则允许用户重试
 			const stream = this.attemptApiRequest(previousApiReqIndex) // yields only if the first chunk is successful, otherwise will allow the user to retry the request (most likely due to rate limit error, which gets thrown on the first chunk)
 			let assistantMessage = ""
 			this.isStreaming = true
 			try {
+				// 处理 API 流式返回的数据
 				for await (const chunk of stream) {
 					switch (chunk.type) {
+						// 处理令牌和费用信息
 						case "usage":
 							inputTokens += chunk.inputTokens
 							outputTokens += chunk.outputTokens
@@ -2987,8 +3021,10 @@ export class Cline {
 						case "text":
 							assistantMessage += chunk.text
 							// parse raw assistant message into content blocks
+							// 解析并显示助手的消息
 							const prevLength = this.assistantMessageContent.length
 							this.assistantMessageContent = parseAssistantMessage(assistantMessage)
+							// 如果消息已超过一定长度，更新界面并保存
 							if (this.assistantMessageContent.length > prevLength) {
 								this.userMessageContentReady = false // new content we need to present, reset to false in case previous content set this to true
 							}
@@ -3043,30 +3079,44 @@ export class Cline {
 
 			this.didCompleteReadingStream = true
 
+			// 将所有未完成的内容块标记为完成，允许 presentAssistantMessage 完成并设置 userMessageContentReady 为 true
+			// 这些内容块可以是没有后续工具使用的文本块，或者是最后一个文本块，或是无效的工具使用等。
+			// 无论是什么情况，presentAssistantMessage 都依赖于这些块完成或用户拒绝该块，才能继续执行并最终设置 userMessageContentReady 为 true
 			// set any blocks to be complete to allow presentAssistantMessage to finish and set userMessageContentReady to true
 			// (could be a text block that had no subsequent tool uses, or a text block at the very end, or an invalid tool use, etc. whatever the case, presentAssistantMessage relies on these blocks either to be completed or the user to reject a block in order to proceed and eventually set userMessageContentReady to true)
 			const partialBlocks = this.assistantMessageContent.filter((block) => block.partial)
 			partialBlocks.forEach((block) => {
 				block.partial = false
 			})
+			// 不能直接遍历所有内容块并将它们标记为完成，因为如果中间有工具正在执行，可能会导致问题
 			// this.assistantMessageContent.forEach((e) => (e.partial = false)) // cant just do this bc a tool could be in the middle of executing ()
 			if (partialBlocks.length > 0) {
 				this.presentAssistantMessage() // if there is content to update then it will complete and update this.userMessageContentReady to true, which we pwaitfor before making the next request. all this is really doing is presenting the last partial message that we just set to complete
 			}
 
+			// 更新 API 请求消息，记录令牌使用和费用信息
 			updateApiReqMsg()
+			// 将当前的对话记录保存到文件
 			await this.saveClineMessages()
+			// 更新前端的 Webview 显示状态
 			await this.providerRef.deref()?.postStateToWebview()
 
+			// 现在将助手的响应添加到 API 对话历史中
+			// 需要在进行工具使用前先保存助手的响应，以防用户退出，防止丢失助手的回复
 			// now add to apiconversationhistory
 			// need to save assistant responses to file before proceeding to tool use since user can exit at any moment and we wouldn't be able to save the assistant's response
 			let didEndLoop = false
 			if (assistantMessage.length > 0) {
+				// 添加助手的消息到对话历史
 				await this.addToApiConversationHistory({
 					role: "assistant",
 					content: [{ type: "text", text: assistantMessage }],
 				})
 
+				// 备注：这个注释是为将来参考的 - 这是一个临时解决方法，用于处理 userMessageContent 没有正确设置为 true 的问题
+				// 这是因为在 didRejectTool 情况下，它没有递归调用处理部分块，所以在等待部分块完成时，任务会卡住，无法继续
+				// 处理完所有内容块后，如果 API 流已经结束，并且没有新的块需要执行，则可以设置 userMessageContentReady 为 true
+				// 你不应该再调用 presentAssistantMessage，因为如果最后一个块完成，它会再次展示
 				// NOTE: this comment is here for future reference - this was a workaround for userMessageContent not getting set to true. It was due to it not recursively calling for partial blocks when didRejectTool, so it would get stuck waiting for a partial block to complete before it could continue.
 				// in case the content blocks finished
 				// it may be the api stream finished after the last parsed content block was executed, so  we are able to detect out of bounds and set userMessageContentReady to true (note you should not call presentAssistantMessage since if the last block is completed it will be presented again)
@@ -3075,28 +3125,35 @@ export class Cline {
 				// 	this.userMessageContentReady = true
 				// }
 
+    			// 等待直到 userMessageContentReady 为 true，表明所有内容块已经准备好
 				await pWaitFor(() => this.userMessageContentReady)
 
+				// 如果模型没有使用工具，则需要告知模型要么使用工具，要么尝试完成请求
 				// if the model did not tool use, then we need to tell it to either use a tool or attempt_completion
 				const didToolUse = this.assistantMessageContent.some((block) => block.type === "tool_use")
 
 				if (!didToolUse) {
+					// 如果没有工具使用，表示这是一个正常的请求，模型应该使用工具或尝试完成任务
 					// normal request where tool use is required
 					this.userMessageContent.push({
 						type: "text",
 						text: formatResponse.noToolsUsed(),
 					})
+					// 增加连续错误计数
 					this.consecutiveMistakeCount++
 				}
 
+    			// 递归调用，处理下一步任务
 				const recDidEndLoop = await this.recursivelyMakeClineRequests(this.userMessageContent)
-				didEndLoop = recDidEndLoop
+				didEndLoop = recDidEndLoop  // 记录递归调用的结果
 			} else {
+				// 如果没有助手的响应，表示 API 没有返回文本或工具使用内容块，这通常是一个错误
 				// if there's no assistant_responses, that means we got no text or tool_use content blocks from API which we should assume is an error
 				await this.say(
 					"error",
 					"Unexpected API Response: The language model did not provide any assistant messages. This may indicate an issue with the API or the model's output.",
 				)
+				// 将失败信息添加到 API 对话历史
 				await this.addToApiConversationHistory({
 					role: "assistant",
 					content: [
