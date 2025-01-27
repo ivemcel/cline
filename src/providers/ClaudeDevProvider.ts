@@ -15,16 +15,30 @@ https://github.com/KumarVariable/vscode-extension-sidebar-html/blob/master/src/c
 */
 
 export class ClaudeDevProvider implements vscode.WebviewViewProvider {
+	// sideBarId 和 tabPanelId 分别是侧边栏和标签面板的 ID，用于在 package.json 中引用
 	public static readonly sideBarId = "claude-dev.SidebarProvider" // used in package.json as the view's id. This value cannot be changed due to how vscode caches views based on their id, and updating the id would break existing instances of the extension.
 	public static readonly tabPanelId = "claude-dev.TabPanelProvider"
+	
+	// 用于存储所有要清理的资源
 	private disposables: vscode.Disposable[] = []
+
+	// 存储 Webview 视图的引用，可以是 WebviewView 或 WebviewPanel
 	private view?: vscode.WebviewView | vscode.WebviewPanel
+
+	// 用于提供实例唯一标识符，避免不同实例间的状态冲突
 	private providerInstanceIdentifier = Date.now()
-	private claudeDev?: ClaudeDev
+
+	//在 ClaudeDevProvider 类中，有一个私有属性 claudeDev，它的类型是 ClaudeDev，但这个属性是可选的，可能为 undefined。
+	private claudeDev?: ClaudeDev 	// ClaudeDev 实例，负责与后端 API 通信
+
+	// 用于跟踪最新公告的 ID，确保仅显示最新的公告
+	// 更新公告时，需要使用唯一标识符
 	private latestAnnouncementId = "jul-29-2024" // update to some unique identifier when we add a new announcement
 
 	constructor(
+		// 插件上下文，包含全局和工作区的状态
 		private readonly context: vscode.ExtensionContext,
+		// 用于输出调试信息的通道
 		private readonly outputChannel: vscode.OutputChannel
 	) {
 		this.outputChannel.appendLine("ClaudeDevProvider instantiated")
@@ -35,6 +49,10 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 	- https://vscode-docs.readthedocs.io/en/stable/extensions/patterns-and-principles/
 	- https://github.com/microsoft/vscode-extension-samples/blob/main/webview-sample/src/extension.ts
 	*/
+	/*
+		VSCode 扩展使用可处置模式（disposable pattern）来清理资源，
+		当侧边栏或编辑器标签页被关闭时会清理资源，包括事件监听器、命令、UI 等
+	*/
 	async dispose() {
 		this.outputChannel.appendLine("Disposing ClaudeDevProvider...")
 		await this.clearTask()
@@ -43,6 +61,7 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 			this.view.dispose()
 			this.outputChannel.appendLine("Disposed webview")
 		}
+		// 清理所有可处置对象
 		while (this.disposables.length) {
 			const x = this.disposables.pop()
 			if (x) {
@@ -52,7 +71,9 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 		this.outputChannel.appendLine("Disposed all disposables")
 	}
 
+	// 解析 Webview 并设置必要的资源和事件监听器
 	resolveWebviewView(
+		//| 符号表示 联合类型（Union Type）。它的作用是允许一个值可以是多个类型中的任意一个。
 		webviewView: vscode.WebviewView | vscode.WebviewPanel
 		//context: vscode.WebviewViewResolveContext<unknown>, used to recreate a deallocated webview, but we don't need this since we use retainContextWhenHidden
 		//token: vscode.CancellationToken
@@ -63,12 +84,14 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.options = {
 			// Allow scripts in the webview
 			enableScripts: true,
+			// 允许本地资源路径
 			localResourceRoots: [this.context.extensionUri],
 		}
 		webviewView.webview.html = this.getHtmlContent(webviewView.webview)
 
 		// Sets up an event listener to listen for messages passed from the webview view context
 		// and executes code based on the message that is recieved
+		// 设置 Webview 消息监听器，接收来自 Webview 的消息并执行相应的代码
 		this.setWebviewMessageListener(webviewView.webview)
 
 		// Logs show up in bottom panel > Debug Console
@@ -76,12 +99,13 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 
 		// Listen for when the panel becomes visible
 		// https://github.com/microsoft/vscode-discussions/discussions/840
+		// 监听视图状态变化（可见性）
 		if ("onDidChangeViewState" in webviewView) {
 			// WebviewView and WebviewPanel have all the same properties except for this visibility listener
 			// panel
 			webviewView.onDidChangeViewState(
 				() => {
-					if (this.view?.visible) {
+					if (this.view?.visible) { //等价于if (this.view && this.view.visible) 
 						this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
 					}
 				},
@@ -103,6 +127,7 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 
 		// Listen for when the view is disposed
 		// This happens when the user closes the view or when the view is closed programmatically
+		// 监听视图销毁事件
 		webviewView.onDidDispose(
 			async () => {
 				await this.dispose()
@@ -112,6 +137,7 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 		)
 
 		// Listen for when color changes
+		// 监听颜色主题变化
 		vscode.workspace.onDidChangeConfiguration(
 			(e) => {
 				if (e && e.affectsConfiguration("workbench.colorTheme")) {
@@ -124,14 +150,17 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 		)
 
 		// if the extension is starting a new session, clear previous task state
+		// 清理之前的任务状态
 		this.clearTask()
 
 		// Clear previous version's (0.0.6) claudeMessage cache from workspace state. We now store in global state with a unique identifier for each provider instance. We need to store globally rather than per workspace to eventually implement task history
+		// 清理旧版本的 claudeMessage 缓存
 		this.updateWorkspaceState("claudeMessages", undefined)
 
 		this.outputChannel.appendLine("Webview view resolved")
 	}
 
+	// 尝试初始化 ClaudeDev 实例，并传入任务信息
 	async tryToInitClaudeDevWithTask(task: string) {
 		await this.clearTask() // ensures that an exising task doesn't exist before starting a new one, although this shouldn't be possible since user must clear task before starting a new one
 		const [apiKey, maxRequestsPerTask] = await Promise.all([
@@ -154,9 +183,9 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 	 * @remarks This is also the place where references to the React webview build files
 	 * are created and inserted into the webview HTML.
 	 *
-	 * @param webview A reference to the extension webview
-	 * @param extensionUri The URI of the directory containing the extension
-	 * @returns A template string literal containing the HTML that should be
+	 * @param webview A reference to the extension webview 传入的 vscode.Webview 实例，表示 Webview 组件的引用，后续会在 HTML 内容中插入与 Webview 相关的文件。
+	 * @param extensionUri The URI of the directory containing the extension 传入的扩展目录的 URI，用于引用扩展中的资源（例如 HTML、CSS、JS 文件等）。
+	 * @returns A template string literal containing the HTML that should be 返回一个 HTML 字符串，这个 HTML 字符串是 Webview 面板中需要渲染的内容。
 	 * rendered within the webview panel
 	 */
 	private getHtmlContent(webview: vscode.Webview): string {
@@ -369,7 +398,12 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
+	/**
+	 * 从 VS Code 的存储中读取一些配置信息，并将这些信息打包成一个 state 对象，通过消息发送给 Webview。
+	 */
 	async postStateToWebview() {
+		//这里使用了 Promise.all 来并发地执行多个异步操作，确保它们都完成后再继续执行后续代码。
+		//Promise.all 返回一个包含所有 Promise 结果的数组，因此我们使用解构赋值将这些结果分配到相应的变量中。
 		const [apiKey, maxRequestsPerTask, claudeMessages, lastShownAnnouncementId] = await Promise.all([
 			this.getSecret("apiKey") as Promise<string | undefined>,
 			this.getGlobalState("maxRequestsPerTask") as Promise<number | undefined>,
@@ -528,11 +562,14 @@ export function getNonce() {
  * @remarks This URI can be used within a webview's HTML as a link to the
  * given file/resource.
  *
- * @param webview A reference to the extension webview
- * @param extensionUri The URI of the directory containing the extension
- * @param pathList An array of strings representing the path to a file/resource
- * @returns A URI pointing to the file/resource
+ * @param webview A reference to the extension webview 这是传入的 Webview 对象，它代表了一个扩展的 Webview，可以在其中嵌入 HTML 内容，并且加载资源。
+ * @param extensionUri The URI of the directory containing the extension  这是扩展的目录 URI，代表了扩展文件所在的路径。这个 URI 用来构造资源的完整路径。
+ * @param pathList An array of strings representing the path to a file/resource  这是一个字符串数组，每个元素代表文件路径中的一部分，用于构建目标文件的完整路径。
+ * @returns A URI pointing to the file/resource 返回一个 URI，这个 URI 对应传入路径的文件资源，并且可以在 Webview 中作为一个资源链接（例如 CSS、JavaScript 文件等）使用。
  */
 export function getUri(webview: Webview, extensionUri: Uri, pathList: string[]) {
+	//Uri.joinPath 是一个 VS Code API，作用是将多个路径部分合并成一个完整的路径。
+	// 例如，如果 extensionUri 是 file:///path/to/extension，
+	// 而 pathList 是 ["assets", "main.js"]，那么合成的路径将会是 file:///path/to/extension/assets/main.js。
 	return webview.asWebviewUri(Uri.joinPath(extensionUri, ...pathList))
 }
