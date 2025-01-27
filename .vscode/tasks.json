@@ -1,76 +1,124 @@
-// See https://go.microsoft.com/fwlink/?LinkId=733558
-// for the documentation about the tasks.json format
 {
+    /*
+    这个 tasks.json 文件定义了一系列用于开发过程中的自动化任务，主要涉及代码的构建、监视和测试。
+    任务配置中包括了多个 npm 脚本任务，任务之间可能有依赖关系，
+    例如 watch 任务依赖多个子任务。这些任务配置通常用于提升开发效率，
+    例如通过自动构建和监视文件变动来提高开发
+    */
+
+	// 任务配置文件的版本号
 	"version": "2.0.0",
+	// 任务数组，包含多个任务配置项
 	"tasks": [
 		{
-            "label": "watch",
-            "dependsOn": [
-                "npm: build:webview",
-                "npm: watch:tsc",
-                "npm: watch:esbuild"
-            ],
-            "presentation": {
-                "reveal": "never"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        },
-        {
-            "type": "npm",
-            "script": "build:webview",
-            "group": "build",
-            "problemMatcher": [],
-            "isBackground": true,
-            "label": "npm: build:webview",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-        {
-            "type": "npm",
-            "script": "watch:esbuild",
-            "group": "build",
-            "problemMatcher": "$esbuild-watch",
-            "isBackground": true,
-            "label": "npm: watch:esbuild",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
-            "type": "npm",
-            "script": "watch:tsc",
-            "group": "build",
-            "problemMatcher": "$tsc-watch",
-            "isBackground": true,
-            "label": "npm: watch:tsc",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
-			"type": "npm",
-			"script": "watch-tests",
-			"problemMatcher": "$tsc-watch",
-			"isBackground": true,
+			// 任务的标签，用来标识该任务
+			"label": "watch",
+			// 当前任务依赖于其他任务，先执行依赖的任务，再执行本任务
+			"dependsOn": [
+				"npm: build:webview",  // 依赖的任务1，执行 npm 中定义的 build:webview 脚本
+				"npm: watch:tsc",       // 依赖的任务2，执行 npm 中定义的 watch:tsc 脚本
+				"npm: watch:esbuild"    // 依赖的任务3，执行 npm 中定义的 watch:esbuild 脚本
+			],
+			// 配置任务在输出面板中的显示方式
 			"presentation": {
-				"reveal": "never",
-				"group": "watchers"
+				// 设置为 "never"，表示不自动显示任务输出
+				"reveal": "never"
 			},
+			// 将当前任务分配到某个任务组
+			"group": {
+				// 任务组的类型是 "build"，意味着它是一个构建任务
+				"kind": "build",
+				// 设置为 true 表示这是该组中的默认任务
+				"isDefault": true
+			}
+		},
+		{
+			// 任务类型是 npm，表示执行 npm 脚本
+			"type": "npm",
+			// 要执行的 npm 脚本名称
+			"script": "build:webview",
+			// 任务组的类型是 "build"
+			"group": "build",
+			// 配置问题匹配器，这里没有配置，表示不处理错误
+			"problemMatcher": [],
+			// 设置该任务为后台任务，VS Code 启动后不会阻塞界面
+			"isBackground": true,
+			// 任务的标签，用来标识该任务
+			"label": "npm: build:webview",
+			// 配置任务在输出面板中的显示方式
+			"presentation": {
+				// 设置为 "never"，表示不自动显示任务输出
+				"group": "watch",  // 该任务属于 "watch" 组
+				"reveal": "never"
+			}
+		},
+		{
+			// 任务类型是 npm，表示执行 npm 脚本
+			"type": "npm",
+			// 要执行的 npm 脚本名称
+			"script": "watch:esbuild",
+			// 任务组的类型是 "build"
+			"group": "build",
+			// 配置问题匹配器，这里指定了 `esbuild` 的问题匹配器
+			"problemMatcher": "$esbuild-watch",
+			// 设置该任务为后台任务，VS Code 启动后不会阻塞界面
+			"isBackground": true,
+			// 任务的标签，用来标识该任务
+			"label": "npm: watch:esbuild",
+			// 配置任务在输出面板中的显示方式
+			"presentation": {
+				// 设置为 "never"，表示不自动显示任务输出
+				"group": "watch",  // 该任务属于 "watch" 组
+				"reveal": "never"
+			}
+		},
+		{
+			// 任务类型是 npm，表示执行 npm 脚本
+			"type": "npm",
+			// 要执行的 npm 脚本名称
+			"script": "watch:tsc",
+			// 任务组的类型是 "build"
+			"group": "build",
+			// 配置问题匹配器，这里指定了 `tsc` 的问题匹配器
+			"problemMatcher": "$tsc-watch",
+			// 设置该任务为后台任务，VS Code 启动后不会阻塞界面
+			"isBackground": true,
+			// 任务的标签，用来标识该任务
+			"label": "npm: watch:tsc",
+			// 配置任务在输出面板中的显示方式
+			"presentation": {
+				// 设置为 "never"，表示不自动显示任务输出
+				"group": "watch",  // 该任务属于 "watch" 组
+				"reveal": "never"
+			}
+		},
+		{
+			// 任务类型是 npm，表示执行 npm 脚本
+			"type": "npm",
+			// 要执行的 npm 脚本名称
+			"script": "watch-tests",
+			// 配置问题匹配器，这里指定了 `tsc` 的问题匹配器
+			"problemMatcher": "$tsc-watch",
+			// 设置该任务为后台任务，VS Code 启动后不会阻塞界面
+			"isBackground": true,
+			// 配置任务在输出面板中的显示方式
+			"presentation": {
+				// 设置为 "never"，表示不自动显示任务输出
+				"reveal": "never",
+				"group": "watchers"  // 该任务属于 "watchers" 组
+			},
+			// 将该任务分配到 "build" 组
 			"group": "build"
 		},
 		{
+			// 任务的标签，用来标识该任务
 			"label": "tasks: watch-tests",
+			// 当前任务依赖于其他任务，先执行依赖的任务，再执行本任务
 			"dependsOn": [
-				"npm: watch",
-				"npm: watch-tests"
+				"npm: watch",      // 依赖 "npm: watch" 任务
+				"npm: watch-tests" // 依赖 "npm: watch-tests" 任务
 			],
+			// 配置问题匹配器，这里没有配置，表示不处理错误
 			"problemMatcher": []
 		}
 	]

@@ -1,21 +1,27 @@
-// A launch configuration that compiles the extension and then opens it inside a new window
-// Use IntelliSense to learn about possible attributes.
-// Hover to view descriptions of existing attributes.
-// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
 {
+	//这个 launch.json 配置文件是用来在 VS Code 中启动并调试一个扩展的。其主要作用是在开发过程中运行和调试自定义扩展。
+	// 该配置文件的版本号
 	"version": "0.2.0",
+	// 配置数组，包含了多种不同的启动配置。在这种情况下，只有一个配置。
 	"configurations": [
 		{
+			// 启动配置的名称，用于标识该配置
 			"name": "Run Extension",
+			// 配置类型，指示如何启动该配置。这里是 extensionHost，表示启动 VS Code 扩展的主机进程
 			"type": "extensionHost",
+			//定义启动请求的类型。"launch" 表示直接启动一个新的进程，而不是连接到已有的调试会话。"launch" 通常用于启动新的应用程序或进程。
 			"request": "launch",
+			// 启动时传递给扩展的命令行参数
 			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}"  // 传递扩展开发路径，`${workspaceFolder}` 是一个内置变量，表示当前工作区文件夹的路径
 			],
+			// 输出文件的路径，表示需要调试的编译文件。这里配置了所有 `.js` 文件，通常是 TypeScript 或其他源文件编译后的文件
 			"outFiles": [
-				"${workspaceFolder}/dist/**/*.js"
+				"${workspaceFolder}/dist/**/*.js"  // 这里使用了 glob 模式，表示 `dist` 文件夹及其子文件夹中的所有 `.js` 文件
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+			// 在启动扩展前，执行的预启动任务。通常用来编译项目或做一些准备工作
+			"preLaunchTask": "${defaultBuildTask}"  // 这个任务通常是构建项目的默认任务，比如通过 npm 或其他工具进行编译
 		}
 	]
 }
+

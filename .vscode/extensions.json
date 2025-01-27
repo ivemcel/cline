@@ -1,5 +1,22 @@
 {
+  /*
+  extension.json 文件用于指定和管理项目中推荐的扩展。通过在工作区或项目中包含该文件，团队成员或其他开发者会收到关于推荐安装扩展的提示，以帮助统一开发环境，提高代码质量和一致性。
+  recommendations 配置项列出了多个推荐的扩展，确保团队成员使用相同的工具和配置。
+  每个扩展在团队中提供了特定的功能，如代码质量检查、构建工具支持或扩展测试。
+  */
+  // 该链接提供关于 extensions.json 格式的文档，开发者可以参考
   // See http://go.microsoft.com/fwlink/?LinkId=827846
   // for the documentation about the extensions.json format
-  "recommendations": ["dbaeumer.vscode-eslint", "connor4312.esbuild-problem-matchers", "ms-vscode.extension-test-runner"]
+
+  // "recommendations" 数组用于列出推荐的扩展。
+  "recommendations": [
+    // 推荐的第一个扩展，ESLint 用于 JavaScript 和 TypeScript 的代码质量和格式化检查
+    "dbaeumer.vscode-eslint", 
+    
+    // 推荐的第二个扩展，esbuild 的问题匹配器，用于更好地处理 esbuild 相关的编译问题
+    "connor4312.esbuild-problem-matchers", 
+    
+    // 推荐的第三个扩展，用于测试扩展的运行器
+    "ms-vscode.extension-test-runner"
+  ]
 }

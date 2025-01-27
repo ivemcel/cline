@@ -1,13 +1,15 @@
-// Place your settings in this file to overwrite default and user settings.
 {
+    //配置项主要用于调整 VS Code 的工作环境，帮助你优化开发过程中的文件管理和任务运行。
+    
+    // 在这个文件中设置的选项将覆盖默认设置和用户设置。
     "files.exclude": {
-        "out": false, // set this to true to hide the "out" folder with the compiled JS files
-        "dist": false // set this to true to hide the "dist" folder with the compiled JS files
+        "out": false, // 设置为 true 可以隐藏 "out" 文件夹，通常该文件夹存放的是编译后的 JavaScript 文件
+        "dist": false // 设置为 true 可以隐藏 "dist" 文件夹，通常该文件夹存放的是编译后的 JavaScript 文件
     },
     "search.exclude": {
-        "out": true, // set this to false to include "out" folder in search results
-        "dist": true // set this to false to include "dist" folder in search results
+        "out": true, // 设置为 false 可以在搜索结果中包含 "out" 文件夹
+        "dist": true // 设置为 false 可以在搜索结果中包含 "dist" 文件夹
     },
-    // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
+    // 关闭 TypeScript 的自动检测任务，因为我们已经在 npm 脚本中定义了相关任务
     "typescript.tsc.autoDetect": "off"
 }
