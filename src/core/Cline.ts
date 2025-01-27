@@ -2797,16 +2797,16 @@ export class Cline {
 
 	// 异步方法：递归地发起 Cline 请求，处理自动批准、错误计数、API 请求等
 	async recursivelyMakeClineRequests(
-		userContent: UserContent,// 用户输入内容
+		userContent: UserContent, // 用户输入内容
 		includeFileDetails: boolean = false, // 是否包括文件详情
 		isNewTask: boolean = false, // 是否为新任务
 	): Promise<boolean> {
-		 // 如果实例被标记为中止，抛出错误
+		// 如果实例被标记为中止，抛出错误
 		if (this.abort) {
 			throw new Error("Cline instance aborted")
 		}
 
-  		// 如果连续错误次数 >= 3，处理错误并给用户通知
+		// 如果连续错误次数 >= 3，处理错误并给用户通知
 		if (this.consecutiveMistakeCount >= 3) {
 			// 如果启用了自动批准并且允许通知，显示系统通知
 			if (this.autoApprovalSettings.enabled && this.autoApprovalSettings.enableNotifications) {
@@ -2860,7 +2860,7 @@ export class Cline {
 			this.consecutiveAutoApprovedRequestsCount = 0
 		}
 
-  		// 获取上一个 API 请求的索引，以检查令牌使用情况
+		// 获取上一个 API 请求的索引，以检查令牌使用情况
 		// get previous api req's index to check token usage and determine if we need to truncate conversation history
 		const previousApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
 
@@ -2892,7 +2892,7 @@ export class Cline {
 			}
 		}
 
-  		// 加载用户内容的上下文，包括是否包含文件详情
+		// 加载用户内容的上下文，包括是否包含文件详情
 		const [parsedUserContent, environmentDetails] = await this.loadContext(userContent, includeFileDetails)
 		userContent = parsedUserContent
 
@@ -2900,13 +2900,13 @@ export class Cline {
 		// add environment details as its own text block, separate from tool results
 		userContent.push({ type: "text", text: environmentDetails })
 
-  		// 将用户内容添加到 API 会话历史记录中
+		// 将用户内容添加到 API 会话历史记录中
 		await this.addToApiConversationHistory({
 			role: "user",
 			content: userContent,
 		})
 
-  		// 更新 API 请求开始的消息文本（由于占位消息是提前发送的，现在需要替换为实际的请求内容）
+		// 更新 API 请求开始的消息文本（由于占位消息是提前发送的，现在需要替换为实际的请求内容）
 		// since we sent off a placeholder api_req_started message to update the webview while waiting to actually start the API request (to load potential details for example), we need to update the text of that message
 		const lastApiReqIndex = findLastIndex(this.clineMessages, (m) => m.say === "api_req_started")
 		this.clineMessages[lastApiReqIndex].text = JSON.stringify({
@@ -2944,12 +2944,12 @@ export class Cline {
 				} satisfies ClineApiReqInfo)
 			}
 
-    		// 异常处理：如果流式请求被中止，进行相关清理
+			// 异常处理：如果流式请求被中止，进行相关清理
 			const abortStream = async (cancelReason: ClineApiReqCancelReason, streamingFailedMessage?: string) => {
 				if (this.diffViewProvider.isEditing) {
 					await this.diffViewProvider.revertChanges() // closes diff view
 				}
-     			 // 如果最后的消息是部分消息，需要更新并保存
+				// 如果最后的消息是部分消息，需要更新并保存
 				// if last message is a partial we need to update and save it
 				const lastMessage = this.clineMessages.at(-1)
 				if (lastMessage && lastMessage.partial) {
@@ -2978,7 +2978,7 @@ export class Cline {
 					],
 				})
 
-      			// 更新 API 请求消息，记录取消原因和流失败消息
+				// 更新 API 请求消息，记录取消原因和流失败消息
 				// update api_req_started to have cancelled and cost, so that we can display the cost of the partial stream
 				updateApiReqMsg(cancelReason, streamingFailedMessage)
 				await this.saveClineMessages()
@@ -3125,7 +3125,7 @@ export class Cline {
 				// 	this.userMessageContentReady = true
 				// }
 
-    			// 等待直到 userMessageContentReady 为 true，表明所有内容块已经准备好
+				// 等待直到 userMessageContentReady 为 true，表明所有内容块已经准备好
 				await pWaitFor(() => this.userMessageContentReady)
 
 				// 如果模型没有使用工具，则需要告知模型要么使用工具，要么尝试完成请求
@@ -3143,9 +3143,9 @@ export class Cline {
 					this.consecutiveMistakeCount++
 				}
 
-    			// 递归调用，处理下一步任务
+				// 递归调用，处理下一步任务
 				const recDidEndLoop = await this.recursivelyMakeClineRequests(this.userMessageContent)
-				didEndLoop = recDidEndLoop  // 记录递归调用的结果
+				didEndLoop = recDidEndLoop // 记录递归调用的结果
 			} else {
 				// 如果没有助手的响应，表示 API 没有返回文本或工具使用内容块，这通常是一个错误
 				// if there's no assistant_responses, that means we got no text or tool_use content blocks from API which we should assume is an error
