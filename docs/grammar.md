@@ -1,3 +1,22 @@
+### 可选链操作符?.
+可选链运算符（?.） 用于访问对象的属性或调用函数。如果使用此运算符访问的对象或调用的函数是 undefined 或 null，
+则表达式会短路并计算为 undefined，而不是抛出错误。
+```
+const adventurer = {
+  name: 'Alice',
+  cat: {
+    name: 'Dinah',
+  },
+};
+
+const dogName = adventurer.dog?.name;
+console.log(dogName);
+// Expected output: undefined
+
+console.log(adventurer.someNonExistentMethod?.());
+// Expected output: undefined
+```
+
 ### 联合类型 |
 
 ### 空值合并运算符 (??)
