@@ -466,11 +466,12 @@ export class ClaudeDevProvider implements vscode.WebviewViewProvider {
 	}
 
 	async addClaudeMessage(message: ClaudeMessage): Promise<ClaudeMessage[]> {
-		const messages = await this.getClaudeMessages()
-		messages.push(message)
-		await this.setClaudeMessages(messages)
-		return messages
+		const messages = await this.getClaudeMessages();  // 获取现有的消息列表
+		messages.push(message);  // 将新的消息添加到消息列表
+		await this.setClaudeMessages(messages);  // 更新消息列表
+		return messages;  // 返回更新后的消息列表
 	}
+	
 
 	// conversation history to send in API requests
 

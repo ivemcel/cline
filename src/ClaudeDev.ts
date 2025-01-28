@@ -16,6 +16,7 @@ import { DEFAULT_MAX_REQUESTS_PER_TASK } from "./shared/Constants"
 import { ClaudeAsk, ClaudeSay, ClaudeSayTool } from "./shared/ExtensionMessage"
 import { Tool, ToolName } from "./shared/Tool"
 import { ClaudeAskResponse } from "./shared/WebviewMessage"
+import { OpenAI } from 'openai'
 
 const SYSTEM_PROMPT =
 	() => `You are Claude Dev, a highly skilled software developer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
@@ -223,67 +224,99 @@ const tools: Tool[] = [
 		},
 	},
 ]
-
+// Message 接口
+interface Message {
+	role: 'user' | 'assistant' | 'system'
+	content: string
+}
 export class ClaudeDev {
-	private client: Anthropic
-	private maxRequestsPerTask: number
-	private requestCount = 0
-	private askResponse?: ClaudeAskResponse
-	private askResponseText?: string
-	private lastMessageTs?: number
-	private providerRef: WeakRef<ClaudeDevProvider>
-	abort: boolean = false
+	//private client: Anthropic
+	private client: OpenAI
+	private maxRequestsPerTask: number  // 每个任务最多可以发送的请求次数
+	private requestCount = 0  // 当前任务已经发送的请求次数，初始为 0
+	private askResponse?: ClaudeAskResponse  // 请求的响应，可能是 ClaudeAskResponse 类型，也可能是 undefined
+	private askResponseText?: string  // 请求的文本响应，可能是字符串类型，也可能是 undefined
+	private lastMessageTs?: number  // 最后一次消息的时间戳，可能是数字类型，也可能是 undefined
+	private providerRef: WeakRef<ClaudeDevProvider>  // 弱引用指向 ClaudeDevProvider，避免循环引用
+	abort: boolean = false  // 是否中止任务的标志，初始为 false
 
+	// 构造函数，初始化类的实例
 	constructor(provider: ClaudeDevProvider, task: string, apiKey: string, maxRequestsPerTask?: number) {
-		this.providerRef = new WeakRef(provider)
-		this.client = new Anthropic({ apiKey })
-		this.maxRequestsPerTask = maxRequestsPerTask ?? DEFAULT_MAX_REQUESTS_PER_TASK
+		this.providerRef = new WeakRef(provider)  // 使用弱引用来保存提供者对象
+		//this.client = new Anthropic({ apiKey })  // 初始化 Anthropic 客户端，传入 API 密钥
+		this.client = new OpenAI({
+			apiKey,
+			baseURL: 'https://router.requesty.ai/v1', // 设置API基础URL
+		})
+		this.maxRequestsPerTask = maxRequestsPerTask ?? DEFAULT_MAX_REQUESTS_PER_TASK  // 设置最大请求次数，若未传入则使用默认值
 
-		this.startTask(task)
+		this.startTask(task)  // 启动任务，传入任务名称
 	}
 
+	 // 使用新的 API Key重新初始化 Anthropic 客户端
 	updateApiKey(apiKey: string) {
-		this.client = new Anthropic({ apiKey })
+		//this.client = new Anthropic({ apiKey })
+		this.client = new OpenAI({ apiKey })
 	}
 
+	// 更新每个任务的最大请求次数
 	updateMaxRequestsPerTask(maxRequestsPerTask: number | undefined) {
 		this.maxRequestsPerTask = maxRequestsPerTask ?? DEFAULT_MAX_REQUESTS_PER_TASK
 	}
 
+	// 处理 Webview 发来的 ask 响应
 	async handleWebviewAskResponse(askResponse: ClaudeAskResponse, text?: string) {
 		this.askResponse = askResponse
 		this.askResponseText = text
 	}
 
+	// 发送一个问题（ask），并等待响应
 	async ask(type: ClaudeAsk, question: string): Promise<{ response: ClaudeAskResponse; text?: string }> {
 		// If this ClaudeDev instance was aborted by the provider, then the only thing keeping us alive is a promise still running in the background, in which case we don't want to send its result to the webview as it is attached to a new instance of ClaudeDev now. So we can safely ignore the result of any active promises, and this class will be deallocated. (Although we set claudeDev = undefined in provider, that simply removes the reference to this instance, but the instance is still alive until this promise resolves or rejects.)
+		// 如果当前 ClaudeDev 实例已经被提供者中止（abort），那么该实例的承诺会继续运行，但我们不希望将结果返回给 Webview，
+    	// 因为它已经被附加到一个新的 ClaudeDev 实例上，因此我们应该忽略当前的承诺结果，当前实例会被销毁。
+    	// （尽管我们在提供者中将 claudeDev 设置为 undefined，但这仅仅是删除了对该实例的引用，实例在该承诺完成之前仍然存在。）
 		if (this.abort) {
 			throw new Error("ClaudeDev instance aborted")
 		}
-		this.askResponse = undefined
-		this.askResponseText = undefined
-		const askTs = Date.now()
-		this.lastMessageTs = askTs
-		await this.providerRef.deref()?.addClaudeMessage({ ts: askTs, type: "ask", ask: type, text: question })
-		await this.providerRef.deref()?.postStateToWebview()
+		this.askResponse = undefined  // 清空旧的 ask 响应
+		this.askResponseText = undefined  // 清空旧的 ask 响应文本
+		const askTs = Date.now()  // 获取当前时间戳，用于标识该问题
+		this.lastMessageTs = askTs  // 保存当前时间戳
+		//deref() 方法返回 WeakRef 引用的对象（如果它还存在），否则返回 undefined。
+		//?. 可选链操作符确保只有在 deref() 返回有效对象时，才会调用 addClaudeMessage
+		await this.providerRef.deref()?.addClaudeMessage({ ts: askTs, type: "ask", ask: type, text: question })  // 将问题发送给提供者
+		await this.providerRef.deref()?.postStateToWebview()  // 将状态发送给 Webview
+
+		/**
+		 * 它让程序每 100 毫秒检查一次 this.askResponse !== undefined || this.lastMessageTs !== askTs 条件。
+		 * 当 this.askResponse !== undefined 或者 lastMessageTs !== askTs 被更改（防止请求被忽略）时，条件成立，
+		 * pWaitFor 返回一个 resolved 的 Promise，从而 await 可以结束等待并继续执行后续代码。如果没有满足条件，程序会继续每隔 100 毫秒检查一次，直到条件成立。
+		 */
 		await pWaitFor(() => this.askResponse !== undefined || this.lastMessageTs !== askTs, { interval: 100 })
+		
+		// 如果请求的时间戳发生变化，说明该请求已经被忽略
 		if (this.lastMessageTs !== askTs) {
 			throw new Error("Current ask promise was ignored") // could happen if we send multiple asks in a row i.e. with command_output. It's important that when we know an ask could fail, it is handled gracefully
 		}
+		
+		// 返回请求的响应和文本
 		const result = { response: this.askResponse!, text: this.askResponseText }
 		this.askResponse = undefined
 		this.askResponseText = undefined
 		return result
 	}
 
+	// 发送一个 "say" 类型的消息
 	async say(type: ClaudeSay, text?: string): Promise<undefined> {
 		if (this.abort) {
 			throw new Error("ClaudeDev instance aborted")
 		}
+		// 获取当前时间戳，用于标识该消息
 		const sayTs = Date.now()
-		this.lastMessageTs = sayTs
+		this.lastMessageTs = sayTs // 保存当前时间戳
 		await this.providerRef.deref()?.addClaudeMessage({ ts: sayTs, type: "say", say: type, text: text })
-		await this.providerRef.deref()?.postStateToWebview()
+		await this.providerRef.deref()?.postStateToWebview() // 将状态发送给 Webview
 	}
 
 	private async startTask(task: string): Promise<void> {
@@ -618,24 +651,62 @@ export class ClaudeDev {
 		return `The user is not pleased with the results. Use the feedback they provided to successfully complete the task, and then attempt completion again.\nUser's feedback:\n\"${text}\"`
 	}
 
-	async attemptApiRequest(): Promise<Anthropic.Messages.Message> {
+	//async attemptApiRequest(): Promise<Anthropic.Messages.Message> {
+	async attemptApiRequest(): Promise<any> {
 		try {
-			const response = await this.client.messages.create(
+			// const response = await this.client.messages.create(
+			// 	{
+			// 		model: "claude-3-5-sonnet-20240620", // https://docs.anthropic.com/en/docs/about-claude/models
+			// 		// beta max tokens
+			// 		max_tokens: 8192,
+			// 		system: SYSTEM_PROMPT(),
+			// 		messages: (await this.providerRef.deref()?.getApiConversationHistory()) || [],
+			// 		tools: tools,
+			// 		tool_choice: { type: "auto" },
+			// 	},
+			// 	{
+			// 		// https://github.com/anthropics/anthropic-sdk-typescript?tab=readme-ov-file#default-headers
+			// 		headers: { "anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15" },
+			// 	}
+			// )
+			const systemPrompt = SYSTEM_PROMPT();  // 如果 SYSTEM_PROMPT 是函数，这里要执行它获取字符串
+			// 获取对话历史
+			const conversationHistory = await this.providerRef.deref()?.getApiConversationHistory();
+			if (!conversationHistory) {
+				throw new Error("No conversation history found");
+			}
+
+			// 将 `MessageParam[]` 转换为 OpenAI 所需的格式
+			const messages: Message[] = [
 				{
-					model: "claude-3-5-sonnet-20240620", // https://docs.anthropic.com/en/docs/about-claude/models
-					// beta max tokens
-					max_tokens: 8192,
-					system: SYSTEM_PROMPT(),
-					messages: (await this.providerRef.deref()?.getApiConversationHistory()) || [],
-					tools: tools,
-					tool_choice: { type: "auto" },
+					role: 'system',  // 系统角色
+					content: systemPrompt,  // 系统提示内容
 				},
-				{
-					// https://github.com/anthropics/anthropic-sdk-typescript?tab=readme-ov-file#default-headers
-					headers: { "anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15" },
-				}
-			)
-			return response
+				...conversationHistory.map((message) => {
+					// 对于每条消息，检查其 content 类型
+					const content = Array.isArray(message.content)
+						? message.content.map((block) => {
+							// 如果是工具块或文本块，提取出文本内容
+							if ("text" in block) {
+								return block.text;
+							}
+							// 如果是图片块或其他类型，暂时忽略
+							return "";
+						}).join("\n")  // 如果是数组，拼接成一个字符串
+						: message.content;  // 如果是字符串，直接使用
+
+					return {
+						role: message.role,  // 使用消息的角色 (user 或 assistant)
+						content,  // 处理后的内容
+					};
+				}),
+			];
+
+			const response = await this.client.chat.completions.create({
+				model: 'anthropic/claude-3-5-sonnet-20241022', // 使用 Claude 3.5 模型
+				messages: messages
+			})
+			return response.choices[0].message;
 		} catch (error) {
 			const { response } = await this.ask(
 				"api_req_failed",
@@ -661,8 +732,9 @@ export class ClaudeDev {
 		if (this.abort) {
 			throw new Error("ClaudeDev instance aborted")
 		}
-
+		// 将用户的内容添加到 API 会话历史：
 		await this.providerRef.deref()?.addMessageToApiConversationHistory({ role: "user", content: userContent })
+		// 检查请求次数是否超过最大值：
 		if (this.requestCount >= this.maxRequestsPerTask) {
 			const { response } = await this.ask(
 				"request_limit_reached",
@@ -700,29 +772,32 @@ export class ClaudeDev {
 			})
 		)
 		try {
+			// 向大模型 API 发起请求：
 			const response = await this.attemptApiRequest()
 			this.requestCount++
 
+			// 处理 API 响应：
 			let assistantResponses: Anthropic.Messages.ContentBlock[] = []
-			let inputTokens = response.usage.input_tokens
-			let outputTokens = response.usage.output_tokens
-			await this.say(
-				"api_req_finished",
-				JSON.stringify({
-					tokensIn: inputTokens,
-					tokensOut: outputTokens,
-					cost: this.calculateApiCost(inputTokens, outputTokens),
-				})
-			)
-
-			// A response always returns text content blocks (it's just that before we were iterating over the completion_attempt response before we could append text response, resulting in bug)
-			for (const contentBlock of response.content) {
-				if (contentBlock.type === "text") {
-					assistantResponses.push(contentBlock)
-					await this.say("text", contentBlock.text)
-				}
-			}
-
+			// let inputTokens = response.usage.input_tokens
+			// let outputTokens = response.usage.output_tokens
+			// await this.say(
+			// 	"api_req_finished",
+			// 	JSON.stringify({
+			// 		tokensIn: inputTokens,
+			// 		tokensOut: outputTokens,
+			// 		cost: this.calculateApiCost(inputTokens, outputTokens),
+			// 	})
+			// )
+			await this.say("text", response.content)
+			// // 处理文本内容块
+			// // A response always returns text content blocks (it's just that before we were iterating over the completion_attempt response before we could append text response, resulting in bug)
+			// for (const contentBlock of response.content) {
+			// 	if (contentBlock.type === "text") {
+			// 		assistantResponses.push(contentBlock)
+			// 		await this.say("text", contentBlock.text)
+			// 	}
+			// }
+			// 处理工具调用与执行
 			let toolResults: Anthropic.ToolResultBlockParam[] = []
 			let attemptCompletionBlock: Anthropic.Messages.ToolUseBlock | undefined
 			for (const contentBlock of response.content) {
@@ -758,7 +833,6 @@ export class ClaudeDev {
 			}
 
 			let didEndLoop = false
-
 			// attempt_completion is always done last, since there might have been other tools that needed to be called first before the job is finished
 			// it's important to note that claude will order the tools logically in most cases, so we don't have to think about which tools make sense calling before others
 			if (attemptCompletionBlock) {
@@ -779,6 +853,7 @@ export class ClaudeDev {
 				toolResults.push({ type: "tool_result", tool_use_id: attemptCompletionBlock.id, content: result })
 			}
 
+			//递归调用处理工具结果, 将工具结果作为输入继续进行下一轮请求
 			if (toolResults.length > 0) {
 				if (didEndLoop) {
 					await this.providerRef
